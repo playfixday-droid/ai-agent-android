@@ -39,11 +39,11 @@ class Agent(
     suspend fun run(userInstruction: String) {
         val service = AgentAccessibilityService.instance
         if (service == null) {
-            onLog(AgentLog.Error("Accessibility service is not running. Enable it in Android Settings → Accessibility → AI Agent."))
+            onLog(AgentLog.Error("Служба Спецвозможностей не запущена. Включите в Настройки Android → Спецвозможности → AI Agent."))
             return
         }
         if (settings.apiKey.isBlank()) {
-            onLog(AgentLog.Error("API key is empty. Set it on the Settings tab."))
+            onLog(AgentLog.Error("API-ключ не задан. Укажите его на вкладке Настройки."))
             return
         }
 
@@ -71,7 +71,7 @@ class Agent(
                 )
                 val choice = response.choices.firstOrNull()
                     ?: run {
-                        onLog(AgentLog.Error("Empty response from model"))
+                        onLog(AgentLog.Error("Пустой ответ от модели"))
                         return
                     }
                 val msg = choice.message
@@ -82,7 +82,7 @@ class Agent(
                 val toolCalls = msg.toolCalls.orEmpty()
                 if (toolCalls.isEmpty()) {
                     // Model decided to stop without calling `done`. Treat as completion.
-                    onLog(AgentLog.Done(msg.content ?: "(stopped without tool call)", success = true))
+                    onLog(AgentLog.Done(msg.content ?: "(остановлено без вызова инструмента)", success = true))
                     return
                 }
                 var sawDone = false
@@ -105,7 +105,7 @@ class Agent(
                 }
                 if (sawDone) return
             }
-            onLog(AgentLog.Error("Max steps (${settings.maxSteps}) reached without completion."))
+            onLog(AgentLog.Error("Достигнут лимит шагов (${settings.maxSteps}) без завершения."))
         } catch (e: Exception) {
             Log.e(TAG, "Agent loop failed", e)
             onLog(AgentLog.Error(e.message ?: e.toString()))
@@ -125,7 +125,7 @@ class Agent(
                 val state = service.captureScreenState()
                 ToolResult(
                     toolContent = "Foreground app: ${state.packageName}\n${state.description}",
-                    summary = "read_screen → ${state.nodes.size} nodes",
+                    summary = "экран считан → ${state.nodes.size} элементов",
                     newScreenState = state,
                 )
             }
@@ -136,7 +136,7 @@ class Agent(
                 val ok = service.tapNode(node)
                 ToolResult(
                     toolContent = if (ok) "Tapped node $nodeId" else "Tap dispatch failed",
-                    summary = "tap node=$nodeId ok=$ok",
+                    summary = if (ok) "нажат элемент #$nodeId" else "не удалось нажать элемент #$nodeId",
                 )
             }
             "tap_at" -> {
@@ -145,7 +145,7 @@ class Agent(
                 val ok = service.tap(x, y)
                 ToolResult(
                     toolContent = if (ok) "Tapped at ($x,$y)" else "Tap dispatch failed",
-                    summary = "tap_at ($x,$y) ok=$ok",
+                    summary = if (ok) "нажато по координатам ($x, $y)" else "не удалось нажать ($x, $y)",
                 )
             }
             "swipe" -> {
@@ -153,9 +153,15 @@ class Agent(
                 val distance = args.stringOf("distance") ?: "medium"
                 val (x1, y1, x2, y2) = computeSwipe(direction, distance)
                 val ok = service.swipe(x1, y1, x2, y2)
+                val dirRu = when (direction) {
+                    "up" -> "вверх"; "down" -> "вниз"; "left" -> "влево"; "right" -> "вправо"; else -> direction
+                }
+                val distRu = when (distance) {
+                    "short" -> "коротко"; "long" -> "длинно"; else -> "средне"
+                }
                 ToolResult(
                     toolContent = if (ok) "Swiped $direction" else "Swipe failed",
-                    summary = "swipe $direction $distance ok=$ok",
+                    summary = if (ok) "свайп $dirRu, $distRu" else "не удалось свайпнуть $dirRu",
                 )
             }
             "swipe_at" -> {
@@ -167,7 +173,7 @@ class Agent(
                 val ok = service.swipe(x1, y1, x2, y2, duration)
                 ToolResult(
                     toolContent = if (ok) "Swiped ($x1,$y1)→($x2,$y2)" else "Swipe failed",
-                    summary = "swipe_at ($x1,$y1)→($x2,$y2) ok=$ok",
+                    summary = if (ok) "свайп ($x1,$y1) → ($x2,$y2)" else "не удалось свайпнуть",
                 )
             }
             "type_text" -> {
@@ -182,28 +188,28 @@ class Agent(
                 }
                 ToolResult(
                     toolContent = if (ok) "Typed '$text'" else "Could not find an editable field",
-                    summary = "type_text len=${text.length} ok=$ok",
+                    summary = if (ok) "введён текст (${text.length} симв.)" else "нет активного поля ввода",
                 )
             }
             "press_back" -> {
                 val ok = service.pressBack()
                 ToolResult(
                     toolContent = if (ok) "Back pressed" else "Back failed",
-                    summary = "press_back ok=$ok",
+                    summary = if (ok) "нажата Назад" else "не удалось нажать Назад",
                 )
             }
             "press_home" -> {
                 val ok = service.pressHome()
                 ToolResult(
                     toolContent = if (ok) "Home pressed" else "Home failed",
-                    summary = "press_home ok=$ok",
+                    summary = if (ok) "переход на Главный экран" else "не удалось перейти на Главный экран",
                 )
             }
             "press_recents" -> {
                 val ok = service.pressRecents()
                 ToolResult(
                     toolContent = if (ok) "Recents opened" else "Recents failed",
-                    summary = "press_recents ok=$ok",
+                    summary = if (ok) "открыты Недавние приложения" else "не удалось открыть Недавние",
                 )
             }
             "open_app" -> {
@@ -217,7 +223,7 @@ class Agent(
                     delay(500)
                     ToolResult(
                         toolContent = "Launched $pkg",
-                        summary = "open_app $pkg",
+                        summary = "запущено приложение $pkg",
                     )
                 }
             }
@@ -226,15 +232,15 @@ class Agent(
                 delay(ms.toLong())
                 ToolResult(
                     toolContent = "Waited ${ms}ms",
-                    summary = "wait $ms",
+                    summary = "пауза ${ms} мс",
                 )
             }
             "done" -> {
-                val summary = args.stringOf("summary") ?: "(no summary)"
+                val summary = args.stringOf("summary") ?: "(без описания)"
                 val success = args.boolOf("success") ?: true
                 ToolResult(
                     toolContent = "Acknowledged: $summary",
-                    summary = "done success=$success: $summary",
+                    summary = if (success) "завершено: $summary" else "прекращено: $summary",
                     done = DoneSignal(summary, success),
                 )
             }

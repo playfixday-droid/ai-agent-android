@@ -25,6 +25,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -88,8 +89,8 @@ fun AppRoot(viewModel: MainViewModel) {
     ) { padding ->
         Column(modifier = Modifier.padding(padding).fillMaxSize()) {
             TabRow(selectedTabIndex = tab) {
-                Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Agent") })
-                Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Settings") })
+                Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Агент") })
+                Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Настройки") })
             }
             when (tab) {
                 0 -> AgentTab(
@@ -144,22 +145,22 @@ fun AgentTab(
             Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = if (state.serviceEnabled) {
-                        "Accessibility service enabled."
+                        "Служба Спецвозможностей включена."
                     } else {
-                        "Enable the AI Agent accessibility service to let the agent control the device."
+                        "Включите службу Спецвозможностей AI Agent, чтобы агент мог управлять устройством."
                     },
                     modifier = Modifier.weight(1f),
                 )
                 Spacer(Modifier.height(0.dp))
-                OutlinedButton(onClick = onOpenAccessibility) { Text("Open settings") }
+                OutlinedButton(onClick = onOpenAccessibility) { Text("Открыть настройки") }
             }
         }
         Spacer(Modifier.height(12.dp))
         OutlinedTextField(
             value = state.instruction,
             onValueChange = onInstruction,
-            label = { Text("What should the agent do?") },
-            placeholder = { Text("e.g. Open Settings and turn on Battery Saver") },
+            label = { Text("Что должен сделать агент?") },
+            placeholder = { Text("например: Открой Настройки и включи режим энергосбережения") },
             modifier = Modifier.fillMaxWidth(),
             minLines = 2,
             maxLines = 5,
@@ -168,13 +169,24 @@ fun AgentTab(
         Spacer(Modifier.height(8.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
             if (state.running) {
-                OutlinedButton(onClick = onCancel) { Text("Stop") }
+                Button(
+                    onClick = onCancel,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFFC62828),
+                        contentColor = Color.White,
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("■  СТОП  Будет прерван текущий шаг") }
             } else {
-                Button(onClick = onRun, enabled = state.instruction.isNotBlank()) { Text("Run") }
+                Button(
+                    onClick = onRun,
+                    enabled = state.instruction.isNotBlank(),
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("▶  Запустить") }
             }
         }
         Spacer(Modifier.height(12.dp))
-        Text("Log", style = MaterialTheme.typography.titleMedium)
+        Text("Журнал", style = MaterialTheme.typography.titleMedium)
         LazyColumn(
             state = listState,
             modifier = Modifier
@@ -193,12 +205,12 @@ fun AgentTab(
 @Composable
 private fun LogRow(entry: LogEntry) {
     val (label, body, color) = when (entry) {
-        is LogEntry.System -> Triple("SYS ${entry.time}", entry.text, Color(0xFF455A64))
-        is LogEntry.Thinking -> Triple("STEP ${entry.step} ${entry.time}", "thinking…", Color(0xFF1976D2))
-        is LogEntry.Assistant -> Triple("ASSISTANT ${entry.time}", entry.text, Color(0xFF1B5E20))
-        is LogEntry.Tool -> Triple("TOOL ${entry.time}", "${entry.name}(${entry.arguments}) → ${entry.summary}", Color(0xFF6A1B9A))
-        is LogEntry.Done -> Triple("DONE ${entry.time}", entry.summary, if (entry.success) Color(0xFF2E7D32) else Color(0xFFC62828))
-        is LogEntry.Error -> Triple("ERROR ${entry.time}", entry.message, Color(0xFFC62828))
+        is LogEntry.System -> Triple("СИСТЕМА ${entry.time}", entry.text, Color(0xFF455A64))
+        is LogEntry.Thinking -> Triple("ШАГ ${entry.step} ${entry.time}", "думаю…", Color(0xFF1976D2))
+        is LogEntry.Assistant -> Triple("АГЕНТ ${entry.time}", entry.text, Color(0xFF1B5E20))
+        is LogEntry.Tool -> Triple("ИНСТРУМЕНТ ${entry.time}", "${entry.name}(${entry.arguments}) → ${entry.summary}", Color(0xFF6A1B9A))
+        is LogEntry.Done -> Triple("ГОТОВО ${entry.time}", entry.summary, if (entry.success) Color(0xFF2E7D32) else Color(0xFFC62828))
+        is LogEntry.Error -> Triple("ОШИБКА ${entry.time}", entry.message, Color(0xFFC62828))
     }
     Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
         Text(label, color = color, style = MaterialTheme.typography.labelSmall)
@@ -229,38 +241,38 @@ fun SettingsTab(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("Provider", style = MaterialTheme.typography.titleMedium)
+        Text("Провайдер", style = MaterialTheme.typography.titleMedium)
         OutlinedTextField(
             value = state.apiKey,
             onValueChange = onApiKey,
-            label = { Text("API key") },
+            label = { Text("API-ключ") },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
         )
         OutlinedTextField(
             value = state.baseUrl,
             onValueChange = onBaseUrl,
-            label = { Text("Base URL (OpenAI-compatible)") },
+            label = { Text("Base URL (OpenAI-совместимый)") },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
         )
         OutlinedTextField(
             value = state.model,
             onValueChange = onModel,
-            label = { Text("Model") },
+            label = { Text("Модель") },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
         )
 
         Spacer(Modifier.height(4.dp))
-        Text("Generation", style = MaterialTheme.typography.titleMedium)
+        Text("Генерация", style = MaterialTheme.typography.titleMedium)
         OutlinedTextField(
             value = state.temperature.toString(),
             onValueChange = {
                 val v = it.toFloatOrNull()?.coerceIn(0f, 2f)
                 if (v != null) onTemperature(v) else onTemperature(state.temperature)
             },
-            label = { Text("Temperature (0.0 – 2.0)") },
+            label = { Text("Температура (0.0 – 2.0)") },
             modifier = Modifier.fillMaxWidth(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
             singleLine = true,
@@ -268,7 +280,7 @@ fun SettingsTab(
         OutlinedTextField(
             value = state.maxTokens.toString(),
             onValueChange = { onMaxTokens(it.toIntOrNull()?.coerceIn(0, 32768) ?: state.maxTokens) },
-            label = { Text("Max completion tokens (0 = provider default)") },
+            label = { Text("Макс токенов ответа (0 = дефолт провайдера)") },
             modifier = Modifier.fillMaxWidth(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             singleLine = true,
@@ -276,17 +288,17 @@ fun SettingsTab(
         OutlinedTextField(
             value = state.reasoningEffort,
             onValueChange = onReasoningEffort,
-            label = { Text("Reasoning effort (low / medium / high; empty = off)") },
+            label = { Text("Глубина рассуждений (low / medium / high; пусто = выкл)") },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
         )
 
         Spacer(Modifier.height(4.dp))
-        Text("Agent", style = MaterialTheme.typography.titleMedium)
+        Text("Агент", style = MaterialTheme.typography.titleMedium)
         OutlinedTextField(
             value = state.maxSteps.toString(),
             onValueChange = { onMaxSteps(it.toIntOrNull()?.coerceIn(1, 200) ?: state.maxSteps) },
-            label = { Text("Max steps per run") },
+            label = { Text("Максимум шагов за запуск") },
             modifier = Modifier.fillMaxWidth(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             singleLine = true,
@@ -294,17 +306,17 @@ fun SettingsTab(
         OutlinedTextField(
             value = state.systemPrompt,
             onValueChange = onSystemPrompt,
-            label = { Text("System prompt (empty = built-in default)") },
+            label = { Text("Системный промпт (пусто = встроенный по умолчанию)") },
             modifier = Modifier.fillMaxWidth(),
             minLines = 3,
             maxLines = 8,
         )
         Text(
-            "OpenAI-compatible chat completions with tool calling. Examples: " +
-                "Groq — https://api.groq.com/openai/v1, model openai/gpt-oss-120b. " +
-                "OpenAI — https://api.openai.com/v1, model gpt-4o-mini. " +
+            "Поддерживается любой OpenAI-совместимый chat completions API с tool calling. Примеры: " +
+                "Groq — https://api.groq.com/openai/v1, модель openai/gpt-oss-120b. " +
+                "OpenAI — https://api.openai.com/v1, модель gpt-4o-mini. " +
                 "OpenRouter — https://openrouter.ai/api/v1. " +
-                "Local llama.cpp — http://10.0.2.2:8080/v1.",
+                "Локальный llama.cpp — http://10.0.2.2:8080/v1.",
             style = MaterialTheme.typography.bodySmall,
         )
     }

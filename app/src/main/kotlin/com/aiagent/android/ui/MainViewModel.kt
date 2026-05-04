@@ -91,7 +91,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (_state.value.running) return
         refreshServiceStatus()
         _state.update { it.copy(running = true, log = emptyList()) }
-        appendLog(LogEntry.System("Starting agent: $instruction"))
+        appendLog(LogEntry.System("Запуск агента: $instruction"))
 
         val agent = Agent(getApplication(), settings) { entry -> appendAgentLog(entry) }
 
@@ -100,7 +100,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 agent.run(instruction)
             } finally {
                 _state.update { it.copy(running = false) }
-                appendLog(LogEntry.System("Agent finished."))
+                appendLog(LogEntry.System("Агент завершил работу."))
             }
         }
     }
@@ -109,7 +109,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         currentJob?.cancel()
         currentJob = null
         _state.update { it.copy(running = false) }
-        appendLog(LogEntry.System("Cancelled by user."))
+        appendLog(LogEntry.System("Прервано пользователем."))
     }
 
     private suspend fun appendAgentLog(entry: AgentLog) {
