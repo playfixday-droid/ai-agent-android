@@ -8,6 +8,7 @@ import com.aiagent.android.agent.AgentLog
 import com.aiagent.android.data.Settings
 import com.aiagent.android.service.AgentAccessibilityService
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -36,6 +37,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val state: StateFlow<UiState> = _state.asStateFlow()
 
     private var currentJob: Job? = null
+    private var pendingAnswerChannel: Channel<String>? = null
 
     fun refreshServiceStatus() {
         _state.update { it.copy(serviceEnabled = AgentAccessibilityService.isRunning()) }
@@ -90,16 +92,29 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (instruction.isEmpty()) return
         if (_state.value.running) return
         refreshServiceStatus()
-        _state.update { it.copy(running = true, log = emptyList()) }
+        _state.update {
+            it.copy(
+                running = true,
+                log = emptyList(),
+                pendingQuestion = null,
+                pendingAnswer = "",
+            )
+        }
         appendLog(LogEntry.System("Запуск агента: $instruction"))
 
-        val agent = Agent(getApplication(), settings) { entry -> appendAgentLog(entry) }
+        val agent = Agent(
+            getApplication(),
+            settings,
+            askUser = { question -> waitForUserAnswer(question) },
+        ) { entry -> appendAgentLog(entry) }
 
         currentJob = viewModelScope.launch {
             try {
                 agent.run(instruction)
             } finally {
-                _state.update { it.copy(running = false) }
+                _state.update { it.copy(running = false, pendingQuestion = null) }
+                pendingAnswerChannel?.close()
+                pendingAnswerChannel = null
                 appendLog(LogEntry.System("Агент завершил работу."))
             }
         }
@@ -108,8 +123,35 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun cancelAgent() {
         currentJob?.cancel()
         currentJob = null
-        _state.update { it.copy(running = false) }
+        pendingAnswerChannel?.close()
+        pendingAnswerChannel = null
+        _state.update { it.copy(running = false, pendingQuestion = null) }
         appendLog(LogEntry.System("Прервано пользователем."))
+    }
+
+    fun updatePendingAnswer(value: String) {
+        _state.update { it.copy(pendingAnswer = value) }
+    }
+
+    fun submitAnswer() {
+        val answer = _state.value.pendingAnswer.trim()
+        val ch = pendingAnswerChannel ?: return
+        if (answer.isEmpty()) return
+        viewModelScope.launch { ch.send(answer) }
+    }
+
+    private suspend fun waitForUserAnswer(question: String): String {
+        val ch = Channel<String>(capacity = 1)
+        pendingAnswerChannel = ch
+        _state.update { it.copy(pendingQuestion = question, pendingAnswer = "") }
+        return try {
+            ch.receive()
+        } catch (_: Throwable) {
+            "(пользователь отменил)"
+        } finally {
+            pendingAnswerChannel = null
+            _state.update { it.copy(pendingQuestion = null, pendingAnswer = "") }
+        }
     }
 
     private suspend fun appendAgentLog(entry: AgentLog) {
@@ -117,6 +159,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             is AgentLog.Thinking -> LogEntry.Thinking(entry.step)
             is AgentLog.Assistant -> LogEntry.Assistant(entry.text)
             is AgentLog.ToolCall -> LogEntry.Tool(entry.name, entry.arguments, entry.summary)
+            is AgentLog.AskUser -> LogEntry.AskUser(entry.question)
             is AgentLog.Done -> LogEntry.Done(entry.summary, entry.success)
             is AgentLog.Error -> LogEntry.Error(entry.message)
         }
@@ -143,6 +186,9 @@ data class UiState(
     val reasoningEffort: String = "low",
     val systemPrompt: String = "",
     val log: List<LogEntry> = emptyList(),
+    /** When non-null, the agent is waiting for the user to answer this question. */
+    val pendingQuestion: String? = null,
+    val pendingAnswer: String = "",
 )
 
 sealed class LogEntry(val time: String) {
@@ -159,6 +205,9 @@ sealed class LogEntry(val time: String) {
     }
     data class Tool(val name: String, val arguments: String, val summary: String, private val t: String = now()) :
         LogEntry(t) {
+        override fun copyWithTime() = copy(t = time)
+    }
+    data class AskUser(val question: String, private val t: String = now()) : LogEntry(t) {
         override fun copyWithTime() = copy(t = time)
     }
     data class Done(val summary: String, val success: Boolean, private val t: String = now()) : LogEntry(t) {

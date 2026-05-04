@@ -25,6 +25,7 @@ object Tools {
         Tool(function = pressRecents),
         Tool(function = openApp),
         Tool(function = waitMs),
+        Tool(function = askUser),
         Tool(function = done),
     )
 
@@ -157,6 +158,25 @@ object Tools {
                 putJsonObject("ms") { put("type", "integer") }
             }
             put("required", arr("ms"))
+        },
+    )
+
+    private val askUser = FunctionDef(
+        name = "ask_user",
+        description = "Ask the human user a clarifying question and pause execution until they answer. " +
+            "Use this when the task is ambiguous, requires a choice (yes/no, picking an item, " +
+            "providing a value the user did not give), or when you need confirmation before a " +
+            "potentially destructive action. The user's answer is returned as the tool result. " +
+            "Prefer concrete short questions in the user's language.",
+        parameters = obj {
+            put("type", "object")
+            putJsonObject("properties") {
+                putJsonObject("question") {
+                    put("type", "string")
+                    put("description", "The question to show the user, in their language.")
+                }
+            }
+            put("required", arr("question"))
         },
     )
 

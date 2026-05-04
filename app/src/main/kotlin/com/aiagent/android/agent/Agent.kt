@@ -7,6 +7,7 @@ import com.aiagent.android.data.Settings
 import com.aiagent.android.llm.ChatMessage
 import com.aiagent.android.llm.ChatRequest
 import com.aiagent.android.llm.LlmClient
+import com.aiagent.android.llm.LlmException
 import com.aiagent.android.llm.ToolCall
 import com.aiagent.android.service.AgentAccessibilityService
 import com.aiagent.android.service.ScreenState
@@ -32,6 +33,7 @@ import kotlinx.serialization.json.jsonPrimitive
 class Agent(
     private val context: Context,
     private val settings: Settings,
+    private val askUser: suspend (String) -> String,
     private val onLog: suspend (AgentLog) -> Unit,
 ) {
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
@@ -58,17 +60,38 @@ class Agent(
         try {
             for (step in 1..settings.maxSteps) {
                 onLog(AgentLog.Thinking(step))
-                val response = client.chat(
-                    ChatRequest(
-                        model = settings.model,
-                        messages = messages,
-                        tools = Tools.toolList(),
-                        toolChoice = "auto",
-                        temperature = settings.temperature.toDouble(),
-                        maxCompletionTokens = settings.maxTokens.takeIf { it > 0 },
-                        reasoningEffort = settings.reasoningEffort.takeIf { it.isNotBlank() },
-                    ),
+                val baseRequest = ChatRequest(
+                    model = settings.model,
+                    messages = messages,
+                    tools = Tools.toolList(),
+                    toolChoice = "auto",
+                    temperature = settings.temperature.toDouble(),
+                    maxCompletionTokens = settings.maxTokens.takeIf { it > 0 },
+                    reasoningEffort = settings.reasoningEffort.takeIf { it.isNotBlank() },
                 )
+                val response = try {
+                    client.chat(baseRequest)
+                } catch (e: LlmException) {
+                    val msg = e.message.orEmpty()
+                    // Some models (notably Groq's gpt-oss-*) occasionally emit a malformed tool
+                    // payload that the provider rejects with HTTP 400. Recover by injecting a
+                    // hint nudging the model to be terser, and retry once with the same history.
+                    if (msg.startsWith("HTTP 400") && msg.contains("Parsing", ignoreCase = true)) {
+                        onLog(AgentLog.Error("Модель сгенерировала некорректный tool-call. Пробую ещё раз с подсказкой быть короче."))
+                        messages.add(
+                            ChatMessage(
+                                role = "system",
+                                content = "Your previous response was rejected by the API as malformed. " +
+                                    "Reply with a SINGLE short tool call. Do not embed long text or newlines " +
+                                    "in tool arguments. Keep `text` arguments under 500 characters and " +
+                                    "without literal newline characters.",
+                            ),
+                        )
+                        client.chat(baseRequest.copy(temperature = 0.0))
+                    } else {
+                        throw e
+                    }
+                }
                 val choice = response.choices.firstOrNull()
                     ?: run {
                         onLog(AgentLog.Error("Пустой ответ от модели"))
@@ -235,6 +258,15 @@ class Agent(
                     summary = "пауза ${ms} мс",
                 )
             }
+            "ask_user" -> {
+                val question = args.stringOf("question") ?: return ToolResult.error("Missing question")
+                onLog(AgentLog.AskUser(question))
+                val answer = askUser(question)
+                ToolResult(
+                    toolContent = answer,
+                    summary = "вопрос «$question» → «$answer»",
+                )
+            }
             "done" -> {
                 val summary = args.stringOf("summary") ?: "(без описания)"
                 val success = args.boolOf("success") ?: true
@@ -298,10 +330,13 @@ You can call tools to inspect the screen and perform UI actions. Always:
 Rules:
 - Prefer `tap` with a node_id from the most recent `read_screen` over `tap_at` coordinates.
 - If a field is editable but not yet focused, tap it first, then call `type_text` on the next turn.
+- Before calling `type_text(node_id=N)`, verify in `read_screen` that node N has class containing 'Edit' / 'EditText' / 'TextField' or attribute editable=true. If unsure, tap it first and re-read the screen.
 - If you need to scroll to find content, use `swipe up` to scroll content downward.
-- Be cautious: do not perform destructive actions (deleting data, sending money, mass-messaging) unless the user explicitly asked for them.
-- Keep textual replies short. Most of your output should be tool calls.
+- Be cautious: do not perform destructive actions (deleting data, sending money, mass-messaging) unless the user explicitly asked for them. When in doubt, call `ask_user` with a yes/no question.
+- When the user's instruction is ambiguous (which app, which item, which value), call `ask_user` with a short question in the user's language and use their answer; do NOT guess silently.
+- Keep textual replies short. Most of your output should be tool calls. When using `type_text`, keep the text reasonable in length and avoid embedded newlines unless absolutely required.
 - If you see a permission dialog blocking the task, tap the appropriate button (Allow/While using the app) yourself.
+- Reply in the same language the user used in their instruction (so Russian instructions get Russian `done` summaries and Russian `ask_user` questions).
 """
     }
 }
@@ -310,6 +345,7 @@ sealed class AgentLog {
     data class Thinking(val step: Int) : AgentLog()
     data class Assistant(val text: String) : AgentLog()
     data class ToolCall(val name: String, val arguments: String, val summary: String) : AgentLog()
+    data class AskUser(val question: String) : AgentLog()
     data class Done(val summary: String, val success: Boolean) : AgentLog()
     data class Error(val message: String) : AgentLog()
 }

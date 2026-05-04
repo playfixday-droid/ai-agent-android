@@ -98,6 +98,8 @@ fun AppRoot(viewModel: MainViewModel) {
                     onInstruction = viewModel::updateInstruction,
                     onRun = viewModel::runAgent,
                     onCancel = viewModel::cancelAgent,
+                    onPendingAnswer = viewModel::updatePendingAnswer,
+                    onSubmitAnswer = viewModel::submitAnswer,
                     onOpenAccessibility = {
                         context.startActivity(
                             Intent(AndroidSettings.ACTION_ACCESSIBILITY_SETTINGS)
@@ -127,6 +129,8 @@ fun AgentTab(
     onInstruction: (String) -> Unit,
     onRun: () -> Unit,
     onCancel: () -> Unit,
+    onPendingAnswer: (String) -> Unit,
+    onSubmitAnswer: () -> Unit,
     onOpenAccessibility: () -> Unit,
 ) {
     val listState = rememberLazyListState()
@@ -185,6 +189,38 @@ fun AgentTab(
                 ) { Text("▶  Запустить") }
             }
         }
+        if (state.pendingQuestion != null) {
+            Spacer(Modifier.height(12.dp))
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF8E1)),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text(
+                        "Агент ждёт ваш ответ:",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = Color(0xFFE65100),
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(state.pendingQuestion, style = MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = state.pendingAnswer,
+                        onValueChange = onPendingAnswer,
+                        label = { Text("Ваш ответ") },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 1,
+                        maxLines = 4,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Button(
+                        onClick = onSubmitAnswer,
+                        enabled = state.pendingAnswer.isNotBlank(),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Отправить ответ") }
+                }
+            }
+        }
         Spacer(Modifier.height(12.dp))
         Text("Журнал", style = MaterialTheme.typography.titleMedium)
         LazyColumn(
@@ -209,6 +245,7 @@ private fun LogRow(entry: LogEntry) {
         is LogEntry.Thinking -> Triple("ШАГ ${entry.step} ${entry.time}", "думаю…", Color(0xFF1976D2))
         is LogEntry.Assistant -> Triple("АГЕНТ ${entry.time}", entry.text, Color(0xFF1B5E20))
         is LogEntry.Tool -> Triple("ИНСТРУМЕНТ ${entry.time}", "${entry.name}(${entry.arguments}) → ${entry.summary}", Color(0xFF6A1B9A))
+        is LogEntry.AskUser -> Triple("ВОПРОС ${entry.time}", entry.question, Color(0xFFE65100))
         is LogEntry.Done -> Triple("ГОТОВО ${entry.time}", entry.summary, if (entry.success) Color(0xFF2E7D32) else Color(0xFFC62828))
         is LogEntry.Error -> Triple("ОШИБКА ${entry.time}", entry.message, Color(0xFFC62828))
     }
