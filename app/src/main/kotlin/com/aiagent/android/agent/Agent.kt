@@ -134,6 +134,20 @@ class Agent(
             onLog(AgentLog.Error(e.message ?: e.toString()))
         } finally {
             client.close()
+            returnToApp()
+        }
+    }
+
+    /** Bring the AI Agent app back to the foreground so the user can see the result log. */
+    private fun returnToApp() {
+        runCatching {
+            val launch = context.packageManager.getLaunchIntentForPackage(context.packageName)
+            if (launch != null) {
+                launch.flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP
+                context.startActivity(launch)
+            }
         }
     }
 
@@ -327,6 +341,12 @@ You can call tools to inspect the screen and perform UI actions. Always:
 3. After actions that change the UI (tap, type, swipe, open_app, press_back, press_home, press_recents), call `read_screen` again before deciding the next action.
 4. When the task is complete (or impossible), call `done` with a concise summary.
 
+Do NOT call `done` prematurely. Specifically:
+- If the user asked you to write/type text, you must have successfully called `type_text` AND the next `read_screen` must show that text in the field. Only THEN call `done(success=true)`.
+- If the user asked you to find or open something, you must have actually navigated there and `read_screen` must confirm it before calling `done`.
+- After what you believe is the final action, ALWAYS run one more `read_screen` to verify the desired state, and only then call `done`.
+- If a tool result indicates failure (e.g. "нет активного поля ввода", "не удалось нажать"), recover by tapping the right node first or trying another approach — do NOT just call `done(success=false)` immediately. Try at least 2-3 alternative approaches first.
+
 Rules:
 - Prefer `tap` with a node_id from the most recent `read_screen` over `tap_at` coordinates.
 - If a field is editable but not yet focused, tap it first, then call `type_text` on the next turn.
@@ -334,7 +354,7 @@ Rules:
 - If you need to scroll to find content, use `swipe up` to scroll content downward.
 - Be cautious: do not perform destructive actions (deleting data, sending money, mass-messaging) unless the user explicitly asked for them. When in doubt, call `ask_user` with a yes/no question.
 - When the user's instruction is ambiguous (which app, which item, which value), call `ask_user` with a short question in the user's language and use their answer; do NOT guess silently.
-- Keep textual replies short. Most of your output should be tool calls. When using `type_text`, keep the text reasonable in length and avoid embedded newlines unless absolutely required.
+- Keep textual replies short. Most of your output should be tool calls. When using `type_text`, keep the text reasonable in length (under 1000 characters) and avoid embedded newlines unless absolutely required.
 - If you see a permission dialog blocking the task, tap the appropriate button (Allow/While using the app) yourself.
 - Reply in the same language the user used in their instruction (so Russian instructions get Russian `done` summaries and Russian `ask_user` questions).
 """
