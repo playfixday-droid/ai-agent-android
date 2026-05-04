@@ -1,10 +1,13 @@
 package com.aiagent.android.ui
 
+import android.content.Context
 import android.content.Intent
+import android.media.projection.MediaProjectionManager
 import android.os.Bundle
 import android.provider.Settings as AndroidSettings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
@@ -58,15 +61,25 @@ class MainActivity : ComponentActivity() {
 
     private val viewModel: MainViewModel by viewModels()
 
+    private val projectionLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            viewModel.onProjectionResult(result.resultCode, result.data)
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    AppRoot(viewModel)
+                    AppRoot(viewModel, ::launchProjectionConsent)
                 }
             }
         }
+    }
+
+    private fun launchProjectionConsent() {
+        val mpm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+        projectionLauncher.launch(mpm.createScreenCaptureIntent())
     }
 
     override fun onResume() {
@@ -77,7 +90,7 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AppRoot(viewModel: MainViewModel) {
+fun AppRoot(viewModel: MainViewModel, onRequestProjection: () -> Unit) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var tab by remember { mutableIntStateOf(0) }
     val context = LocalContext.current
@@ -100,6 +113,7 @@ fun AppRoot(viewModel: MainViewModel) {
                     onCancel = viewModel::cancelAgent,
                     onPendingAnswer = viewModel::updatePendingAnswer,
                     onSubmitAnswer = viewModel::submitAnswer,
+                    onAllowProjection = onRequestProjection,
                     onOpenAccessibility = {
                         context.startActivity(
                             Intent(AndroidSettings.ACTION_ACCESSIBILITY_SETTINGS)
@@ -131,6 +145,7 @@ fun AgentTab(
     onCancel: () -> Unit,
     onPendingAnswer: (String) -> Unit,
     onSubmitAnswer: () -> Unit,
+    onAllowProjection: () -> Unit,
     onOpenAccessibility: () -> Unit,
 ) {
     val listState = rememberLazyListState()
@@ -218,6 +233,33 @@ fun AgentTab(
                         enabled = state.pendingAnswer.isNotBlank(),
                         modifier = Modifier.fillMaxWidth(),
                     ) { Text("Отправить ответ") }
+                }
+            }
+        }
+        if (state.pendingProjection) {
+            Spacer(Modifier.height(12.dp))
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFE3F2FD)),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text(
+                        "Агент хочет записать экран",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = Color(0xFF0D47A1),
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Чтобы записать видео, Android требует ваше согласие. " +
+                            "Нажмите кнопку ниже — появится системный диалог. " +
+                            "Видео сохранится в /Android/data/com.aiagent.android/files/Movies/AI Agent.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Button(
+                        onClick = onAllowProjection,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Разрешить запись экрана") }
                 }
             }
         }

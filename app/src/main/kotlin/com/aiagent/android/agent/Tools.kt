@@ -26,6 +26,8 @@ object Tools {
         Tool(function = openApp),
         Tool(function = waitMs),
         Tool(function = askUser),
+        Tool(function = startScreenRecording),
+        Tool(function = stopScreenRecording),
         Tool(function = done),
     )
 
@@ -178,6 +180,23 @@ object Tools {
             }
             put("required", arr("question"))
         },
+    )
+
+    private val startScreenRecording = FunctionDef(
+        name = "start_screen_recording",
+        description = "Begin recording the device screen as an MP4 video. The first call in a session " +
+            "will pause until the user grants the system MediaProjection consent dialog (this is a " +
+            "hard Android requirement; the agent cannot bypass it). Use this when the user asked you " +
+            "to record a guide / demo / how-to video. Always pair it with `stop_screen_recording` once " +
+            "the demonstration is finished. The result string contains the path to the saved file.",
+        parameters = obj { put("type", "object"); putJsonObject("properties") {} },
+    )
+
+    private val stopScreenRecording = FunctionDef(
+        name = "stop_screen_recording",
+        description = "Stop the current screen recording and finalize the MP4 file. Returns the path " +
+            "to the saved video. Safe to call even if no recording is in progress.",
+        parameters = obj { put("type", "object"); putJsonObject("properties") {} },
     )
 
     private val done = FunctionDef(

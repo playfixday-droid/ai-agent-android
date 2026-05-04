@@ -1,12 +1,14 @@
 package com.aiagent.android.ui
 
 import android.app.Application
+import android.content.Intent
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.aiagent.android.agent.Agent
 import com.aiagent.android.agent.AgentLog
 import com.aiagent.android.data.Settings
 import com.aiagent.android.service.AgentAccessibilityService
+import com.aiagent.android.service.ScreenRecorderService
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -38,6 +40,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private var currentJob: Job? = null
     private var pendingAnswerChannel: Channel<String>? = null
+    private var pendingProjectionChannel: Channel<ProjectionGrant>? = null
 
     fun refreshServiceStatus() {
         _state.update { it.copy(serviceEnabled = AgentAccessibilityService.isRunning()) }
@@ -106,6 +109,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             getApplication(),
             settings,
             askUser = { question -> waitForUserAnswer(question) },
+            startScreenRecording = { startScreenRecording() },
+            stopScreenRecording = { stopScreenRecording() },
         ) { entry -> appendAgentLog(entry) }
 
         currentJob = viewModelScope.launch {
@@ -125,7 +130,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         currentJob = null
         pendingAnswerChannel?.close()
         pendingAnswerChannel = null
-        _state.update { it.copy(running = false, pendingQuestion = null) }
+        pendingProjectionChannel?.close()
+        pendingProjectionChannel = null
+        _state.update { it.copy(running = false, pendingQuestion = null, pendingProjection = false) }
         appendLog(LogEntry.System("Прервано пользователем."))
     }
 
@@ -153,6 +160,62 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             _state.update { it.copy(pendingQuestion = null, pendingAnswer = "") }
         }
     }
+
+    /** Called from the Agent's `start_screen_recording` tool. Suspends until the user grants. */
+    private suspend fun startScreenRecording(): String {
+        if (ScreenRecorderService.isRecording) return "уже идёт запись"
+        val ch = Channel<ProjectionGrant>(capacity = 1)
+        pendingProjectionChannel = ch
+        _state.update { it.copy(pendingProjection = true) }
+        val grant = try {
+            ch.receive()
+        } catch (_: Throwable) {
+            return "запись отменена"
+        } finally {
+            pendingProjectionChannel = null
+            _state.update { it.copy(pendingProjection = false) }
+        }
+        if (grant.resultCode == 0 || grant.data == null) return "пользователь отказал в записи"
+        val app = getApplication<Application>()
+        val intent = Intent(app, ScreenRecorderService::class.java).apply {
+            action = ScreenRecorderService.ACTION_START
+            putExtra(ScreenRecorderService.EXTRA_RESULT_CODE, grant.resultCode)
+            putExtra(ScreenRecorderService.EXTRA_DATA, grant.data)
+        }
+        if (android.os.Build.VERSION.SDK_INT >= 26) {
+            app.startForegroundService(intent)
+        } else {
+            app.startService(intent)
+        }
+        // Give the recorder a moment to start.
+        kotlinx.coroutines.delay(400)
+        return if (ScreenRecorderService.lastError != null) {
+            "ошибка записи: ${ScreenRecorderService.lastError}"
+        } else {
+            "запись начата"
+        }
+    }
+
+    private fun stopScreenRecording(): String {
+        if (!ScreenRecorderService.isRecording) return "запись не велась"
+        val app = getApplication<Application>()
+        val intent = Intent(app, ScreenRecorderService::class.java).apply {
+            action = ScreenRecorderService.ACTION_STOP
+        }
+        app.startService(intent)
+        val file = ScreenRecorderService.lastFile ?: ""
+        return "запись остановлена, файл: $file"
+    }
+
+    /** Called by [MainActivity] after the system MediaProjection consent dialog returns. */
+    fun onProjectionResult(resultCode: Int, data: Intent?) {
+        val ch = pendingProjectionChannel
+        if (ch != null) {
+            viewModelScope.launch { ch.send(ProjectionGrant(resultCode, data)) }
+        }
+    }
+
+    fun isProjectionPending(): Boolean = pendingProjectionChannel != null
 
     private suspend fun appendAgentLog(entry: AgentLog) {
         val log = when (entry) {
@@ -189,7 +252,11 @@ data class UiState(
     /** When non-null, the agent is waiting for the user to answer this question. */
     val pendingQuestion: String? = null,
     val pendingAnswer: String = "",
+    /** When true, the agent has requested screen recording and the UI must show the consent button. */
+    val pendingProjection: Boolean = false,
 )
+
+data class ProjectionGrant(val resultCode: Int, val data: Intent?)
 
 sealed class LogEntry(val time: String) {
     abstract fun copyWithTime(): LogEntry

@@ -34,6 +34,8 @@ class Agent(
     private val context: Context,
     private val settings: Settings,
     private val askUser: suspend (String) -> String,
+    private val startScreenRecording: suspend () -> String,
+    private val stopScreenRecording: suspend () -> String,
     private val onLog: suspend (AgentLog) -> Unit,
 ) {
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
@@ -281,6 +283,20 @@ class Agent(
                     summary = "вопрос «$question» → «$answer»",
                 )
             }
+            "start_screen_recording" -> {
+                val res = startScreenRecording()
+                ToolResult(
+                    toolContent = res,
+                    summary = "запись экрана: $res",
+                )
+            }
+            "stop_screen_recording" -> {
+                val res = stopScreenRecording()
+                ToolResult(
+                    toolContent = res,
+                    summary = res,
+                )
+            }
             "done" -> {
                 val summary = args.stringOf("summary") ?: "(без описания)"
                 val success = args.boolOf("success") ?: true
@@ -351,6 +367,8 @@ Rules:
 - Prefer `tap` with a node_id from the most recent `read_screen` over `tap_at` coordinates.
 - If a field is editable but not yet focused, tap it first, then call `type_text` on the next turn.
 - Before calling `type_text(node_id=N)`, verify in `read_screen` that node N has class containing 'Edit' / 'EditText' / 'TextField' or attribute editable=true. If unsure, tap it first and re-read the screen.
+- After every `type_text` call, immediately call `read_screen` and confirm the new text is present in the editable field. If it is not, do NOT give up: tap the field first, then retry `type_text`. If still empty after 2 attempts, call `ask_user` to confirm the field selection rather than giving up silently.
+- The screen recording tools (`start_screen_recording` / `stop_screen_recording`) record the device screen as an MP4 video. Use them only when the user explicitly asked to "record a guide / video / how-to". The first call pauses for the user to grant Android's MediaProjection consent — that is normal, just wait. Always call `stop_screen_recording` once the demonstration is finished.
 - If you need to scroll to find content, use `swipe up` to scroll content downward.
 - Be cautious: do not perform destructive actions (deleting data, sending money, mass-messaging) unless the user explicitly asked for them. When in doubt, call `ask_user` with a yes/no question.
 - When the user's instruction is ambiguous (which app, which item, which value), call `ask_user` with a short question in the user's language and use their answer; do NOT guess silently.

@@ -2,6 +2,9 @@ package com.aiagent.android.service
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.graphics.Path
 import android.graphics.Rect
@@ -166,20 +169,50 @@ class AgentAccessibilityService : AccessibilityService() {
     /** Type text into the currently focused editable node. Returns true on success. */
     fun typeText(text: String): Boolean {
         val focused = findFocusedEditable() ?: return false
-        val args = Bundle().apply {
-            putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
-        }
-        return focused.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+        return setOrPasteText(focused, text)
     }
 
     /** Type text into a specific node (must be editable). */
     fun typeTextInNode(node: UiNode, text: String): Boolean {
         val accNode = findNodeByBounds(node.bounds) ?: return false
         if (!accNode.isEditable) return false
+        // Make sure it has focus first so the IME / Compose pipeline accepts the change.
+        accNode.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+        accNode.performAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS)
+        return setOrPasteText(accNode, text)
+    }
+
+    /**
+     * Try multiple strategies to put text into the given node:
+     * 1. ACTION_SET_TEXT (works for native EditText)
+     * 2. Clipboard + ACTION_PASTE (works for Compose TextField, WebView inputs, etc. that
+     *    silently ignore SET_TEXT)
+     */
+    private fun setOrPasteText(node: AccessibilityNodeInfo, text: String): Boolean {
+        // Strategy 1: ACTION_SET_TEXT replaces the full text content.
         val args = Bundle().apply {
             putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
         }
-        return accNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+        val setOk = runCatching { node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args) }
+            .getOrDefault(false)
+        if (setOk) {
+            // Verify by reading the node text back; some implementations return true but ignore.
+            val current = node.text?.toString() ?: ""
+            if (current.contains(text) || current == text) return true
+            // Otherwise fall through to clipboard fallback.
+        }
+        // Strategy 2: clipboard paste.
+        return pasteViaClipboard(node, text)
+    }
+
+    private fun pasteViaClipboard(node: AccessibilityNodeInfo, text: String): Boolean {
+        return runCatching {
+            val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            cm.setPrimaryClip(ClipData.newPlainText("ai-agent", text))
+            // Make sure the node is focused before pasting.
+            node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+            node.performAction(AccessibilityNodeInfo.ACTION_PASTE)
+        }.getOrDefault(false)
     }
 
     private fun findFocusedEditable(): AccessibilityNodeInfo? {
