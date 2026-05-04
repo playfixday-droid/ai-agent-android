@@ -7,6 +7,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -108,6 +110,10 @@ fun AppRoot(viewModel: MainViewModel) {
                     onBaseUrl = viewModel::updateBaseUrl,
                     onModel = viewModel::updateModel,
                     onMaxSteps = viewModel::updateMaxSteps,
+                    onTemperature = viewModel::updateTemperature,
+                    onMaxTokens = viewModel::updateMaxTokens,
+                    onReasoningEffort = viewModel::updateReasoningEffort,
+                    onSystemPrompt = viewModel::updateSystemPrompt,
                 )
             }
         }
@@ -211,8 +217,19 @@ fun SettingsTab(
     onBaseUrl: (String) -> Unit,
     onModel: (String) -> Unit,
     onMaxSteps: (Int) -> Unit,
+    onTemperature: (Float) -> Unit,
+    onMaxTokens: (Int) -> Unit,
+    onReasoningEffort: (String) -> Unit,
+    onSystemPrompt: (String) -> Unit,
 ) {
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    val scrollState = rememberScrollState()
+    Column(
+        modifier = Modifier.fillMaxSize()
+            .verticalScroll(scrollState)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text("Provider", style = MaterialTheme.typography.titleMedium)
         OutlinedTextField(
             value = state.apiKey,
             onValueChange = onApiKey,
@@ -234,18 +251,60 @@ fun SettingsTab(
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
         )
+
+        Spacer(Modifier.height(4.dp))
+        Text("Generation", style = MaterialTheme.typography.titleMedium)
         OutlinedTextField(
-            value = state.maxSteps.toString(),
-            onValueChange = { onMaxSteps(it.toIntOrNull()?.coerceIn(1, 200) ?: state.maxSteps) },
-            label = { Text("Max steps") },
+            value = state.temperature.toString(),
+            onValueChange = {
+                val v = it.toFloatOrNull()?.coerceIn(0f, 2f)
+                if (v != null) onTemperature(v) else onTemperature(state.temperature)
+            },
+            label = { Text("Temperature (0.0 – 2.0)") },
+            modifier = Modifier.fillMaxWidth(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+            singleLine = true,
+        )
+        OutlinedTextField(
+            value = state.maxTokens.toString(),
+            onValueChange = { onMaxTokens(it.toIntOrNull()?.coerceIn(0, 32768) ?: state.maxTokens) },
+            label = { Text("Max completion tokens (0 = provider default)") },
             modifier = Modifier.fillMaxWidth(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             singleLine = true,
         )
+        OutlinedTextField(
+            value = state.reasoningEffort,
+            onValueChange = onReasoningEffort,
+            label = { Text("Reasoning effort (low / medium / high; empty = off)") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+        )
+
+        Spacer(Modifier.height(4.dp))
+        Text("Agent", style = MaterialTheme.typography.titleMedium)
+        OutlinedTextField(
+            value = state.maxSteps.toString(),
+            onValueChange = { onMaxSteps(it.toIntOrNull()?.coerceIn(1, 200) ?: state.maxSteps) },
+            label = { Text("Max steps per run") },
+            modifier = Modifier.fillMaxWidth(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            singleLine = true,
+        )
+        OutlinedTextField(
+            value = state.systemPrompt,
+            onValueChange = onSystemPrompt,
+            label = { Text("System prompt (empty = built-in default)") },
+            modifier = Modifier.fillMaxWidth(),
+            minLines = 3,
+            maxLines = 8,
+        )
         Text(
-            "The agent uses an OpenAI-compatible chat completions endpoint with tool calling. " +
-                "Set the base URL to point at your provider (e.g. https://api.openai.com/v1, " +
-                "https://openrouter.ai/api/v1, or a local server such as http://10.0.2.2:8080/v1).",
+            "OpenAI-compatible chat completions with tool calling. Examples: " +
+                "Groq — https://api.groq.com/openai/v1, model openai/gpt-oss-120b. " +
+                "OpenAI — https://api.openai.com/v1, model gpt-4o-mini. " +
+                "OpenRouter — https://openrouter.ai/api/v1. " +
+                "Local llama.cpp — http://10.0.2.2:8080/v1.",
             style = MaterialTheme.typography.bodySmall,
         )
     }

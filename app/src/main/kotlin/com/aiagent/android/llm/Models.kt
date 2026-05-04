@@ -17,7 +17,8 @@ data class ChatRequest(
     val tools: List<Tool>? = null,
     @SerialName("tool_choice") val toolChoice: String? = null,
     val temperature: Double? = null,
-    @SerialName("max_tokens") val maxTokens: Int? = null,
+    @SerialName("max_completion_tokens") val maxCompletionTokens: Int? = null,
+    @SerialName("reasoning_effort") val reasoningEffort: String? = null,
 )
 
 @Serializable

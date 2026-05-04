@@ -48,8 +48,9 @@ class Agent(
         }
 
         val client = LlmClient(settings.baseUrl, settings.apiKey)
+        val systemPrompt = settings.systemPrompt.takeIf { it.isNotBlank() } ?: SYSTEM_PROMPT
         val messages = mutableListOf<ChatMessage>(
-            ChatMessage(role = "system", content = SYSTEM_PROMPT),
+            ChatMessage(role = "system", content = systemPrompt),
             ChatMessage(role = "user", content = userInstruction),
         )
         var lastScreenState: ScreenState? = null
@@ -63,7 +64,9 @@ class Agent(
                         messages = messages,
                         tools = Tools.toolList(),
                         toolChoice = "auto",
-                        temperature = 0.2,
+                        temperature = settings.temperature.toDouble(),
+                        maxCompletionTokens = settings.maxTokens.takeIf { it > 0 },
+                        reasoningEffort = settings.reasoningEffort.takeIf { it.isNotBlank() },
                     ),
                 )
                 val choice = response.choices.firstOrNull()

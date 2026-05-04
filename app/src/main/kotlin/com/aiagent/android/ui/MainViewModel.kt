@@ -27,6 +27,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             baseUrl = settings.baseUrl,
             model = settings.model,
             maxSteps = settings.maxSteps,
+            temperature = settings.temperature,
+            maxTokens = settings.maxTokens,
+            reasoningEffort = settings.reasoningEffort,
+            systemPrompt = settings.systemPrompt,
         ),
     )
     val state: StateFlow<UiState> = _state.asStateFlow()
@@ -55,6 +59,26 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun updateMaxSteps(value: Int) {
         settings.maxSteps = value
         _state.update { it.copy(maxSteps = value) }
+    }
+
+    fun updateTemperature(value: Float) {
+        settings.temperature = value
+        _state.update { it.copy(temperature = value) }
+    }
+
+    fun updateMaxTokens(value: Int) {
+        settings.maxTokens = value
+        _state.update { it.copy(maxTokens = value) }
+    }
+
+    fun updateReasoningEffort(value: String) {
+        settings.reasoningEffort = value
+        _state.update { it.copy(reasoningEffort = value) }
+    }
+
+    fun updateSystemPrompt(value: String) {
+        settings.systemPrompt = value
+        _state.update { it.copy(systemPrompt = value) }
     }
 
     fun updateInstruction(value: String) {
@@ -114,6 +138,10 @@ data class UiState(
     val baseUrl: String = "",
     val model: String = "",
     val maxSteps: Int = 20,
+    val temperature: Float = 0.2f,
+    val maxTokens: Int = 2048,
+    val reasoningEffort: String = "low",
+    val systemPrompt: String = "",
     val log: List<LogEntry> = emptyList(),
 )
 
